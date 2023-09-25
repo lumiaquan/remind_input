@@ -20,7 +20,7 @@
         v-for="item in options"
         :key="item.id"
         :label="item.name"
-        :value="item"
+        :value="item.id"
       />
     </el-select>
   </div>
@@ -42,7 +42,9 @@ export default {
       ],
       selectShow: false,
       // 光标选中区域，用于保存光标
-      range: null
+      range: null,
+      replacePosition: null,
+      atIndex: 0
     }
   },
   watch: {
@@ -59,6 +61,8 @@ export default {
       if (e.data === '@') {
         const range = window.getSelection().getRangeAt(0) // 获取当前光标
         const position = range.getBoundingClientRect()
+        console.log(window.getSelection())
+        this.replacePosition = window.getSelection().anchorOffset
         const select = document.querySelector('.el-select')
         select.style.top = position.y + 'px'
         select.style.left = position.x + 5 + 'px'
@@ -79,24 +83,56 @@ export default {
     },
     // 保存光标
     saveSelection() {
-      return window.getSelection().getRangeAt(0)
-    },
-    // 移动光标
-    removeSelection() {
-      if (this.range) {
-        const selection = window.getSelection()
-        selection.addRange(this.range)
-        selection.removeAllRanges()
+      const selection = window.getSelection()
+      if (selection && selection.getRangeAt(0)) {
+        return window.getSelection().getRangeAt(0)
       }
     },
-    selectChange(person) {
-      const replacePosition = window.getSelection().anchorOffset
-      const frondStr = this.content.substring(0, replacePosition - 1)
-      const endStr = this.content.substring(replacePosition)
+    // 恢复光标
+    restoreSelection() {
+      if (this.range) {
+        const selection = window.getSelection()
+        selection.removeAllRanges()
+        selection.addRange(this.range)
+      }
+    },
+    selectChange(id) {
+      this.atIndex++
+      this.restoreSelection()
+      const range = window.getSelection().getRangeAt(0)
+      // 光标移动到最后
+      range.collapse(false)
       // 插入的span标签contenteditable为false时可以让标签整体删除
-      const replaceText = `<span contenteditable="false" class="remind-name">@${person.name}</span>`
-      this.content = frondStr + replaceText + endStr
+      const name = this.findName(id)
+      const insetText = `<span contenteditable="false" id="at-${this.atIndex}" class="remind-name">@${name}</span>`
+      const node = range.createContextualFragment(insetText)
+      const child = node.lastChild
+      range.insertNode(node)
+      if (child) {
+        range.setEndAfter(child)
+        // range.setEndBefore(child)
+      }
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
       this.selectShow = false
+      this.$nextTick(() => {
+        if (!/@<span contenteditable="false"/.test(this.$refs.editor.innerHTML)) return
+        console.log(this.$refs.editor.innerHTML)
+        this.$refs.editor.innerHTML = this.$refs.editor.innerHTML.replace(/@<span contenteditable="false"/, '<span contenteditable="false"')
+        const el = document.getElementById(`at-${this.atIndex}`)
+        const range = document.createRange()
+        const sel = window.getSelection()
+        // 将光标重新定位到自定义标签后面
+        range.setEndAfter(el)
+        range.collapse(false)
+
+        sel.removeAllRanges()
+        sel.addRange(range)
+      })
+    },
+    findName(id) {
+      return this.options.find(item => item.id === id).name
     }
   }
 }
